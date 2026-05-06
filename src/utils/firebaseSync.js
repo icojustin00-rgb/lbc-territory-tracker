@@ -17,32 +17,15 @@ const SYNC_KEYS = [
 const SYNC_DOC = doc(db, "trackerSync", "main");
 
 let isApplyingRemote = false;
-let hasReceivedCloudData = false;
+let hasInitializedFromCloud = false;
+let hasUnsavedLocalChanges = false;
 
 export function isSyncKey(key) {
   return SYNC_KEYS.includes(key);
 }
 
-function safeParse(value) {
-  try {
-    return value ? JSON.parse(value) : null;
-  } catch {
-    return value;
-  }
-}
-
-function hasUsefulLocalData() {
-  return SYNC_KEYS.some((key) => {
-    const value = localStorage.getItem(key);
-    if (!value) return false;
-
-    const parsed = safeParse(value);
-
-    if (Array.isArray(parsed)) return parsed.length > 0;
-    if (parsed && typeof parsed === "object") return Object.keys(parsed).length > 0;
-
-    return Boolean(value);
-  });
+export function isRemoteApplying() {
+  return isApplyingRemote;
 }
 
 function getLocalSnapshot() {
@@ -63,7 +46,19 @@ function writeLocalStorageValue(key, value) {
   }
 }
 
+export function markLocalDirty() {
+  if (!isApplyingRemote) {
+    hasUnsavedLocalChanges = true;
+  }
+}
+
+export function shouldSkipCloudSave() {
+  return isApplyingRemote;
+}
+
 export function applyRemoteSnapshot(data = {}) {
+  if (hasUnsavedLocalChanges) return;
+
   isApplyingRemote = true;
 
   try {
@@ -73,7 +68,7 @@ export function applyRemoteSnapshot(data = {}) {
   } finally {
     setTimeout(() => {
       isApplyingRemote = false;
-    }, 500);
+    }, 300);
   }
 
   window.dispatchEvent(new Event("storage"));
@@ -91,42 +86,34 @@ export async function saveLocalToCloud() {
     },
     { merge: true }
   );
+
+  hasUnsavedLocalChanges = false;
 }
 
 export async function initializeCloudFromLocalIfEmpty() {
   const snapshot = await getDoc(SYNC_DOC);
 
   if (!snapshot.exists()) {
-    if (hasUsefulLocalData()) {
-      await saveLocalToCloud();
-    }
-    return;
+    await saveLocalToCloud();
   }
-
-  const cloudData = snapshot.data()?.localStorageData;
-
-  if (!cloudData || Object.keys(cloudData).length === 0) {
-    if (hasUsefulLocalData()) {
-      await saveLocalToCloud();
-    }
-  }
-}
-
-export function shouldSkipCloudSave() {
-  return isApplyingRemote || !hasReceivedCloudData;
 }
 
 export function subscribeToCloud(onRemoteUpdate) {
   return onSnapshot(SYNC_DOC, async (snapshot) => {
     if (!snapshot.exists()) {
-      hasReceivedCloudData = true;
+      hasInitializedFromCloud = true;
+      await saveLocalToCloud();
       return;
     }
 
     const data = snapshot.data()?.localStorageData || {};
-    hasReceivedCloudData = true;
 
-    applyRemoteSnapshot(data);
+    if (!hasInitializedFromCloud) {
+      hasInitializedFromCloud = true;
+      applyRemoteSnapshot(data);
+    } else {
+      applyRemoteSnapshot(data);
+    }
 
     if (typeof onRemoteUpdate === "function") {
       onRemoteUpdate();

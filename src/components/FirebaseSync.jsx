@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   initializeCloudFromLocalIfEmpty,
   isSyncKey,
+  markLocalDirty,
   saveLocalToCloud,
   shouldSkipCloudSave,
   subscribeToCloud,
@@ -23,6 +24,8 @@ export default function FirebaseSync() {
       if (key && !isSyncKey(key)) return;
       if (shouldSkipCloudSave()) return;
 
+      markLocalDirty();
+
       window.clearTimeout(saveTimerRef.current);
 
       saveTimerRef.current = window.setTimeout(() => {
@@ -31,7 +34,7 @@ export default function FirebaseSync() {
         saveLocalToCloud().catch((error) => {
           console.error("Firebase save error:", error);
         });
-      }, 350);
+      }, 250);
     }
 
     localStorage.setItem = function patchedSetItem(key, value) {

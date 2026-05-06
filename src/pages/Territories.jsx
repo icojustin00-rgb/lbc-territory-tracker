@@ -181,6 +181,14 @@ export default function Territories() {
               const itemKey = `${item.dateKey}__${item.territoryNo}`;
               const status = getEffectiveStatus(item);
               const displayStreets = getDisplayStreets(item);
+
+              // IMPORTANT:
+              // The guide may be working on carried-over pending streets,
+              // but when saving a NEW pending update, they should be able to
+              // select from the FULL territory list. This allows old pending
+              // streets to be replaced with new pending streets correctly.
+              const pendingSelectionStreets = item.streets;
+
               const selected = selectedStreets[itemKey] || [];
               const savedRemark = getSavedRemark(item);
               const remarkDraft = getRemarkDraft(item);
@@ -220,7 +228,7 @@ export default function Territories() {
                             ))}
                           </div>
                           <p className="mt-2 text-xs">
-                            Once marked Done, the next schedule resets to the full territory.
+                            If all streets are finished, tap Mark Done. If there are new unfinished streets, tap Pending and select the new streets.
                           </p>
                         </div>
                       )}
@@ -295,12 +303,15 @@ export default function Territories() {
 
                   {isPendingOpen && (
                     <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                      <p className="mb-3 text-sm font-semibold text-amber-800">
+                      <p className="mb-2 text-sm font-semibold text-amber-800">
                         Select the streets that were not finished:
+                      </p>
+                      <p className="mb-3 text-xs text-amber-700">
+                        If there was a previous pending carryover, this will replace it with the new selected pending streets.
                       </p>
 
                       <div className="grid gap-2">
-                        {displayStreets.map((street) => (
+                        {pendingSelectionStreets.map((street) => (
                           <label key={street} className="flex items-center gap-3 rounded-xl bg-white px-3 py-3 ring-1 ring-amber-100">
                             <input
                               type="checkbox"
