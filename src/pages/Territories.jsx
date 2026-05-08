@@ -45,17 +45,31 @@ export default function Territories() {
     return getCarryOverPendingForDate(item.dateKey, item.day, item.territoryNo);
   }
 
+  function getCurrentPending(item) {
+    return (
+      pendingItems.find(
+        (pending) =>
+          pending.dateKey === item.dateKey &&
+          pending.territoryNo === item.territoryNo
+      ) || null
+    );
+  }
+
+  function getActivePending(item) {
+    return getCurrentPending(item) || getCarryOverPending(item);
+  }
+
   function getDisplayStreets(item) {
-    const carryOver = getCarryOverPending(item);
-    return carryOver?.leftStreets?.length ? carryOver.leftStreets : item.streets;
+    const activePending = getActivePending(item);
+    return activePending?.leftStreets?.length ? activePending.leftStreets : item.streets;
   }
 
   function getEffectiveStatus(item) {
     const currentStatus = getTerritoryStatus(item.dateKey, item.territoryNo);
-    const carryOver = getCarryOverPending(item);
+    const activePending = getActivePending(item);
 
     if (currentStatus === "Done") return "Done";
-    if (currentStatus === "Pending" || carryOver) return "Pending";
+    if (currentStatus === "Pending" || activePending) return "Pending";
     return "Not updated";
   }
 
@@ -142,7 +156,7 @@ export default function Territories() {
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <h1 className="text-2xl font-semibold text-slate-900">Territories</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Update today’s assigned territory. Pending carryovers only appear on the next scheduled occurrence.
+          Update today’s assigned territory. Pending streets will appear as a guide reminder after saving.
         </p>
       </div>
 
@@ -165,9 +179,16 @@ export default function Territories() {
               const savedRemark = getSavedRemark(item);
               const remarkDraft = getRemarkDraft(item);
               const isPendingOpen = openPendingKey === itemKey;
+
+              const currentPending = getCurrentPending(item);
               const carryOver = getCarryOverPending(item);
-              const isCarryOver = Boolean(carryOver?.leftStreets?.length);
-              const hasReminder = isCarryOver || Boolean(savedRemark);
+              const activePending = currentPending || carryOver;
+
+              const hasPendingStreets = Boolean(activePending?.leftStreets?.length);
+              const hasReminder = hasPendingStreets || Boolean(savedRemark);
+              const pendingLabel = currentPending
+                ? "Current pending streets:"
+                : "Pending carryover from previous week:";
 
               return (
                 <div key={itemKey} className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
@@ -189,11 +210,11 @@ export default function Territories() {
                     <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
                       <p className="font-semibold">Guide Reminder</p>
 
-                      {isCarryOver && (
+                      {hasPendingStreets && (
                         <div className="mt-2">
-                          <p className="font-medium">Pending carryover from previous week only:</p>
+                          <p className="font-medium">{pendingLabel}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
-                            {carryOver.leftStreets.map((street) => (
+                            {activePending.leftStreets.map((street) => (
                               <span key={street} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
                                 {street}
                               </span>

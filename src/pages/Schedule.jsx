@@ -101,7 +101,7 @@ function ScheduleCard({
   const displayStreets = row.carryOverPending?.leftStreets?.length
     ? row.carryOverPending.leftStreets
     : row.streets;
-  const pendingSelectionStreets = row.streets;
+  const pendingSelectionStreets = displayStreets;
   const selected = selectedPendingStreets[key] || [];
   const savedRemark = getTerritoryRemark(row.day, row.territoryNo);
   const remarkKey = getRemarkKey(row);
