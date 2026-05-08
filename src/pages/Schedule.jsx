@@ -5,13 +5,14 @@ import {
   getTerritoryStatus,
   getAssignedGuide,
   setAssignedGuide,
-  getPendingItemForTerritory,
+  getCarryOverPendingForDate,
   addManualPending,
   markTerritoryDone,
   resetScheduledTerritory,
   getTerritoryRemark,
   setTerritoryRemark,
 } from "../utils/storage";
+import useTrackerDataVersion from "../hooks/useTrackerDataVersion";
 
 function badgeClass(status) {
   if (status === "Done") return "bg-green-100 text-green-700 ring-green-200";
@@ -95,12 +96,12 @@ function ScheduleCard({
   setSelectedPendingStreets,
   remarkDrafts,
   setRemarkDrafts,
-  refresh,
 }) {
   const key = rowKey(row);
   const displayStreets = row.carryOverPending?.leftStreets?.length
     ? row.carryOverPending.leftStreets
     : row.streets;
+  const pendingSelectionStreets = row.streets;
   const selected = selectedPendingStreets[key] || [];
   const savedRemark = getTerritoryRemark(row.day, row.territoryNo);
   const remarkKey = getRemarkKey(row);
@@ -126,37 +127,32 @@ function ScheduleCard({
     }));
   }
 
-  function saveRemark() {
-    setTerritoryRemark(row.day, row.territoryNo, remarkValue);
-    refresh();
+  async function saveRemark() {
+    await setTerritoryRemark(row.day, row.territoryNo, remarkValue);
   }
 
-  function clearRemark() {
+  async function clearRemark() {
     setRemarkDrafts((prev) => ({ ...prev, [remarkKey]: "" }));
-    setTerritoryRemark(row.day, row.territoryNo, "");
-    refresh();
+    await setTerritoryRemark(row.day, row.territoryNo, "");
   }
 
-  function handleMarkDone() {
-    markTerritoryDone(row.dateKey, row.territoryNo, row.day);
-    refresh();
+  async function handleMarkDone() {
+    await markTerritoryDone(row.dateKey, row.territoryNo, row.day);
   }
 
-  function handleMarkPending() {
+  async function handleMarkPending() {
     if (selected.length === 0) {
       alert("Please select the streets left.");
       return;
     }
 
-    addManualPending(row.dateKey, row.day, row.territoryNo, selected, row.dateLong);
+    await addManualPending(row.dateKey, row.day, row.territoryNo, selected, row.dateLong);
     setSelectedPendingStreets((prev) => ({ ...prev, [key]: [] }));
-    refresh();
   }
 
-  function handleReset() {
-    resetScheduledTerritory(row.dateKey, row.territoryNo, row.day);
+  async function handleReset() {
+    await resetScheduledTerritory(row.dateKey, row.territoryNo, row.day);
     setSelectedPendingStreets((prev) => ({ ...prev, [key]: [] }));
-    refresh();
   }
 
   return (
@@ -198,8 +194,8 @@ function ScheduleCard({
         <div className="mt-5 space-y-4 border-t border-slate-200 pt-4">
           {row.carryOverPending?.leftStreets?.length > 0 && (
             <div className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
-              <p className="font-semibold">Pending carryover</p>
-              <p className="mt-1">Only the remaining pending streets are shown below. Once marked Done, the next schedule resets to the full territory.</p>
+              <p className="font-semibold">Pending carryover from previous week only</p>
+              <p className="mt-1">This reminder appears only on the next scheduled occurrence, not all future weeks.</p>
             </div>
           )}
 
@@ -244,7 +240,7 @@ function ScheduleCard({
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <p className="mb-3 text-sm font-semibold text-amber-800">Select streets left if this is Pending:</p>
             <div className="grid gap-2">
-              {displayStreets.map((street) => (
+              {pendingSelectionStreets.map((street) => (
                 <label key={street} className="flex items-center gap-3 rounded-xl bg-white px-3 py-3 ring-1 ring-amber-100">
                   <input
                     type="checkbox"
@@ -276,9 +272,9 @@ function ScheduleCard({
 }
 
 export default function Schedule() {
+  const version = useTrackerDataVersion();
   const [activeTab, setActiveTab] = useState("view");
   const [selectedMonth, setSelectedMonth] = useState(() => getMonthValue());
-  const [refreshKey, setRefreshKey] = useState(0);
   const [openRowKey, setOpenRowKey] = useState(null);
   const [selectedPendingStreets, setSelectedPendingStreets] = useState({});
   const [remarkDrafts, setRemarkDrafts] = useState({});
@@ -286,7 +282,7 @@ export default function Schedule() {
   const scheduleRows = useMemo(() => {
     return buildScheduleInstancesForMonth(territories, selectedMonth).map((item) => {
       const savedStatus = getTerritoryStatus(item.dateKey, item.territoryNo);
-      const carryOverPending = getPendingItemForTerritory(item.day, item.territoryNo);
+      const carryOverPending = getCarryOverPendingForDate(item.dateKey, item.day, item.territoryNo);
       const status =
         savedStatus === "Done"
           ? "Done"
@@ -301,15 +297,10 @@ export default function Schedule() {
         carryOverPending,
       };
     });
-  }, [selectedMonth, refreshKey]);
+  }, [selectedMonth, version]);
 
-  function refresh() {
-    setRefreshKey((v) => v + 1);
-  }
-
-  function handleGuideChange(row, guideName) {
-    setAssignedGuide(row.dateKey, row.territoryNo, guideName);
-    refresh();
+  async function handleGuideChange(row, guideName) {
+    await setAssignedGuide(row.dateKey, row.territoryNo, guideName);
   }
 
   return (
@@ -367,7 +358,6 @@ export default function Schedule() {
                 setSelectedPendingStreets={setSelectedPendingStreets}
                 remarkDrafts={remarkDrafts}
                 setRemarkDrafts={setRemarkDrafts}
-                refresh={refresh}
               />
             );
           })}

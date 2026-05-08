@@ -1,18 +1,18 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { territories } from "../data/territories";
 import {
   getTerritoryStatus,
   getPendingItems,
-  getPendingItemForTerritory,
+  getCarryOverPendingForDate,
   addManualPending,
   markTerritoryDone,
   resetScheduledTerritory,
   getTerritoryRemark,
   setTerritoryRemark,
   clearTerritoryRemark,
-  autoMarkMissedTerritories,
 } from "../utils/storage";
 import { buildMonthlyScheduleInstances, getDateKey } from "../utils/schedule";
+import useTrackerDataVersion from "../hooks/useTrackerDataVersion";
 
 const statusStyles = {
   "Not updated": "bg-blue-100 text-blue-700 ring-blue-200",
@@ -25,7 +25,7 @@ function getStatusStyle(status) {
 }
 
 export default function Territories() {
-  const [version, setVersion] = useState(0);
+  const version = useTrackerDataVersion();
   const [selectedStreets, setSelectedStreets] = useState({});
   const [openPendingKey, setOpenPendingKey] = useState(null);
   const [remarkDrafts, setRemarkDrafts] = useState({});
@@ -35,30 +35,14 @@ export default function Territories() {
 
   const scheduleInstances = useMemo(
     () => buildMonthlyScheduleInstances(territories),
-    [version]
+    []
   );
 
-  useEffect(() => {
-    const changed = autoMarkMissedTerritories(scheduleInstances, new Date());
-    if (changed) setVersion((v) => v + 1);
-  }, [scheduleInstances]);
-
   const todaySchedules = scheduleInstances.filter((item) => item.dateKey === todayKey);
-  const pendingItems = getPendingItems();
-
-  function refresh() {
-    setVersion((v) => v + 1);
-  }
+  const pendingItems = useMemo(() => getPendingItems(), [version]);
 
   function getCarryOverPending(item) {
-    return (
-      getPendingItemForTerritory(item.day, item.territoryNo) ||
-      pendingItems.find(
-        (pending) =>
-          pending.territoryNo === item.territoryNo &&
-          pending.sourceDay === item.day
-      )
-    );
+    return getCarryOverPendingForDate(item.dateKey, item.day, item.territoryNo);
   }
 
   function getDisplayStreets(item) {
@@ -94,7 +78,7 @@ export default function Territories() {
     }));
   }
 
-  function saveRemark(item) {
+  async function saveRemark(item) {
     const draft = getRemarkDraft(item).trim();
 
     if (!draft) {
@@ -102,12 +86,11 @@ export default function Territories() {
       return;
     }
 
-    setTerritoryRemark(item.day, item.territoryNo, draft);
+    await setTerritoryRemark(item.day, item.territoryNo, draft);
     setRemarkDrafts((prev) => ({
       ...prev,
       [getRemarkKey(item)]: "",
     }));
-    refresh();
   }
 
   function toggleStreet(itemKey, street) {
@@ -122,11 +105,9 @@ export default function Territories() {
     });
   }
 
-  function handleMarkDone(item) {
-    markTerritoryDone(item.dateKey, item.territoryNo, item.day);
-
-    // Clear previous-week reminder once the current guide confirms this territory is done.
-    clearTerritoryRemark(item.day, item.territoryNo);
+  async function handleMarkDone(item) {
+    await markTerritoryDone(item.dateKey, item.territoryNo, item.day);
+    await clearTerritoryRemark(item.day, item.territoryNo);
 
     setRemarkDrafts((prev) => ({
       ...prev,
@@ -134,10 +115,9 @@ export default function Territories() {
     }));
 
     setOpenPendingKey(null);
-    refresh();
   }
 
-  function handleMarkPending(item) {
+  async function handleMarkPending(item) {
     const itemKey = `${item.dateKey}__${item.territoryNo}`;
     const selected = selectedStreets[itemKey] || [];
 
@@ -146,17 +126,15 @@ export default function Territories() {
       return;
     }
 
-    addManualPending(item.dateKey, item.day, item.territoryNo, selected, item.dateLong);
+    await addManualPending(item.dateKey, item.day, item.territoryNo, selected, item.dateLong);
 
     setSelectedStreets((prev) => ({ ...prev, [itemKey]: [] }));
     setOpenPendingKey(null);
-    refresh();
   }
 
-  function handleReset(item) {
-    resetScheduledTerritory(item.dateKey, item.territoryNo, item.day);
+  async function handleReset(item) {
+    await resetScheduledTerritory(item.dateKey, item.territoryNo, item.day);
     setOpenPendingKey(null);
-    refresh();
   }
 
   return (
@@ -164,7 +142,7 @@ export default function Territories() {
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <h1 className="text-2xl font-semibold text-slate-900">Territories</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Update today’s assigned territory. Previous remarks and pending carryovers will appear as guide reminders.
+          Update today’s assigned territory. Pending carryovers only appear on the next scheduled occurrence.
         </p>
       </div>
 
@@ -181,12 +159,6 @@ export default function Territories() {
               const itemKey = `${item.dateKey}__${item.territoryNo}`;
               const status = getEffectiveStatus(item);
               const displayStreets = getDisplayStreets(item);
-
-              // IMPORTANT:
-              // The guide may be working on carried-over pending streets,
-              // but when saving a NEW pending update, they should be able to
-              // select from the FULL territory list. This allows old pending
-              // streets to be replaced with new pending streets correctly.
               const pendingSelectionStreets = item.streets;
 
               const selected = selectedStreets[itemKey] || [];
@@ -219,7 +191,7 @@ export default function Territories() {
 
                       {isCarryOver && (
                         <div className="mt-2">
-                          <p className="font-medium">Pending carryover:</p>
+                          <p className="font-medium">Pending carryover from previous week only:</p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {carryOver.leftStreets.map((street) => (
                               <span key={street} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
@@ -307,7 +279,7 @@ export default function Territories() {
                         Select the streets that were not finished:
                       </p>
                       <p className="mb-3 text-xs text-amber-700">
-                        If there was a previous pending carryover, this will replace it with the new selected pending streets.
+                        This replaces the previous pending streets with the new selected streets.
                       </p>
 
                       <div className="grid gap-2">

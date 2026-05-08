@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import {
   getPendingCount,
   getCompletedThisMonthCount,
@@ -6,12 +6,11 @@ import {
   getTerritoryStatus,
   getAssignedGuide,
   getTerritoryRemark,
-  getPendingItemForTerritory,
-  autoMarkMissedTerritories,
-  cleanupFuturePendingItems,
+  getCarryOverPendingForDate,
 } from "../utils/storage";
 import { territories, totalStreetCount } from "../data/territories";
 import { buildMonthlyScheduleInstances, getDateKey } from "../utils/schedule";
+import useTrackerDataVersion from "../hooks/useTrackerDataVersion";
 
 function badgeClass(status) {
   if (status === "Done") return "bg-green-100 text-green-700";
@@ -20,7 +19,7 @@ function badgeClass(status) {
 }
 
 export default function Dashboard() {
-  const [refreshKey, setRefreshKey] = useState(0);
+  const version = useTrackerDataVersion();
 
   const today = new Date();
   const todayKey = getDateKey(today);
@@ -33,17 +32,8 @@ export default function Dashboard() {
 
   const monthlySchedule = useMemo(
     () => buildMonthlyScheduleInstances(territories),
-    [refreshKey]
+    []
   );
-
-  useEffect(() => {
-    const cleaned = cleanupFuturePendingItems(new Date());
-    const changed = autoMarkMissedTerritories(monthlySchedule, new Date());
-
-    if (cleaned || changed) {
-      setRefreshKey((value) => value + 1);
-    }
-  }, [monthlySchedule]);
 
   const assignments = useMemo(() => {
     return monthlySchedule
@@ -51,7 +41,8 @@ export default function Dashboard() {
       .slice(0, 2)
       .map((item) => {
         const savedStatus = getTerritoryStatus(item.dateKey, item.territoryNo);
-        const carryOverPending = getPendingItemForTerritory(
+        const carryOverPending = getCarryOverPendingForDate(
+          item.dateKey,
           item.day,
           item.territoryNo
         );
@@ -73,7 +64,7 @@ export default function Dashboard() {
           carryOverPending,
         };
       });
-  }, [monthlySchedule, todayKey, refreshKey]);
+  }, [monthlySchedule, todayKey, version]);
 
   const nextAssignment = assignments[0];
   const upcomingAssignment = assignments[1];
@@ -148,7 +139,7 @@ export default function Dashboard() {
                 {item.carryOverPending?.leftStreets?.length > 0 && (
                   <div className="mt-3">
                     <p className="text-sm font-medium text-amber-900">
-                      Pending streets:
+                      Pending streets from previous week:
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {item.carryOverPending.leftStreets.map((street) => (
@@ -253,4 +244,3 @@ export default function Dashboard() {
     </div>
   );
 }
-// test deploy

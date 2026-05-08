@@ -6,6 +6,7 @@ import {
   getPendingItems,
   getTerritoryRemark,
 } from "../utils/storage";
+import useTrackerDataVersion from "../hooks/useTrackerDataVersion";
 
 function getMonthValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -80,9 +81,43 @@ function percent(value, total) {
   return Math.round((value / total) * 100);
 }
 
+function makeEmptyReportData() {
+  const data = {};
+
+  territories.forEach((territory) => {
+    data[territory.territoryNo] = {
+      lastCompleted: "",
+      lastCompletedGroup: "",
+      assignments: Array.from({ length: 8 }, () => ({
+        assignedTo: "",
+        dateAssigned: "",
+        dateCompleted: "",
+      })),
+    };
+  });
+
+  return data;
+}
+
+function getTerritoryList() {
+  const seen = new Set();
+
+  return territories.filter((item) => {
+    if (seen.has(item.territoryNo)) return false;
+    seen.add(item.territoryNo);
+    return true;
+  });
+}
+
 export default function Summary() {
+  useTrackerDataVersion();
+
+  const [activeTab, setActiveTab] = useState("overview");
   const monthOptions = getLastSixMonthValues();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[0]);
+
+  const [serviceYear, setServiceYear] = useState("2025-2026");
+  const [reportData, setReportData] = useState(() => makeEmptyReportData());
 
   const pendingItems = getPendingItems();
 
@@ -173,6 +208,44 @@ export default function Summary() {
   const totalNotUpdated = rows.filter((row) => row.streetStatus === "Not updated").length;
   const coverageRate = percent(totalCovered, totalScheduled);
 
+  const territoryList = useMemo(() => getTerritoryList(), []);
+
+  function updateReportField(territoryNo, field, value) {
+    setReportData((prev) => ({
+      ...prev,
+      [territoryNo]: {
+        ...prev[territoryNo],
+        [field]: value,
+      },
+    }));
+  }
+
+  function updateAssignmentField(territoryNo, index, field, value) {
+    setReportData((prev) => {
+      const current = prev[territoryNo] || {
+        lastCompleted: "",
+        lastCompletedGroup: "",
+        assignments: Array.from({ length: 8 }, () => ({
+          assignedTo: "",
+          dateAssigned: "",
+          dateCompleted: "",
+        })),
+      };
+
+      const assignments = current.assignments.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      );
+
+      return {
+        ...prev,
+        [territoryNo]: {
+          ...current,
+          assignments,
+        },
+      };
+    });
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -180,160 +253,362 @@ export default function Summary() {
           <div>
             <h1 className="text-2xl font-semibold">Summary</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Excel-style monthly coverage report for CO submission records.
+              Monthly overview and territory assignment report.
             </p>
           </div>
 
-          <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Select Month
-            </label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("overview")}
+              className={`rounded-xl px-4 py-2 text-sm font-medium ${
+                activeTab === "overview"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-700"
+              }`}
             >
-              {monthOptions.map((month) => (
-                <option key={month} value={month}>
-                  {getMonthLabel(month)}
-                </option>
-              ))}
-            </select>
+              Overview
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("territoryReport")}
+              className={`rounded-xl px-4 py-2 text-sm font-medium ${
+                activeTab === "territoryReport"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              Territory Report
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-500">Coverage Rate</p>
-          <p className="mt-2 text-3xl font-bold text-green-600">{coverageRate}%</p>
-        </div>
+      {activeTab === "overview" && (
+        <>
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Overview</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Excel-style monthly coverage report for internal review.
+                </p>
+              </div>
 
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-500">Covered Streets</p>
-          <p className="mt-2 text-3xl font-bold text-green-600">{totalCovered}</p>
-        </div>
-
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-500">Pending Streets</p>
-          <p className="mt-2 text-3xl font-bold text-amber-600">{totalPending}</p>
-        </div>
-
-        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-          <p className="text-sm text-slate-500">Not Updated</p>
-          <p className="mt-2 text-3xl font-bold text-slate-700">{totalNotUpdated}</p>
-        </div>
-      </div>
-
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="text-xl font-semibold">
-          Street Coverage Summary — {getMonthLabel(selectedMonth)}
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Shows how many times each street was scheduled and covered in the selected month.
-        </p>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-slate-100 text-slate-600">
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Territory</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Street</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Scheduled</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Covered</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Pending</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Not Updated</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Coverage %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {streetSummary.map((row) => (
-                <tr key={`${row.territoryNo}-${row.street}`} className="odd:bg-white even:bg-slate-50">
-                  <td className="border border-slate-200 px-3 py-2 font-medium">
-                    {row.territoryNo}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2">{row.street}</td>
-                  <td className="border border-slate-200 px-3 py-2">{row.scheduledCount}</td>
-                  <td className="border border-slate-200 px-3 py-2 text-green-700">
-                    {row.coveredCount}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2 text-amber-700">
-                    {row.pendingCount}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2 text-slate-600">
-                    {row.notUpdatedCount}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2 font-semibold">
-                    {row.coveragePercent}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="text-xl font-semibold">
-          Detailed Monthly Records — {getMonthLabel(selectedMonth)}
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          This table shows each street per scheduled date, similar to an Excel record.
-        </p>
-
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-slate-100 text-slate-600">
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Date</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Day</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Territory</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Street</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Guide</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Territory Status</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Street Status</th>
-                <th className="border border-slate-200 px-3 py-2 font-semibold">Remarks</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.map((row, index) => (
-                <tr
-                  key={`${row.dateKey}-${row.territoryNo}-${row.street}-${index}`}
-                  className="odd:bg-white even:bg-slate-50"
+              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Select Month
+                </label>
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
                 >
-                  <td className="border border-slate-200 px-3 py-2">{row.dateShort}</td>
-                  <td className="border border-slate-200 px-3 py-2">{row.day}</td>
-                  <td className="border border-slate-200 px-3 py-2 font-medium">
-                    {row.territoryNo}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2">{row.street}</td>
-                  <td className="border border-slate-200 px-3 py-2">{row.guide}</td>
-                  <td className="border border-slate-200 px-3 py-2">
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${badgeClass(
-                        row.territoryStatus
-                      )}`}
-                    >
-                      {row.territoryStatus}
-                    </span>
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2">
-                    {row.streetStatus}
-                  </td>
-                  <td className="border border-slate-200 px-3 py-2">
-                    {row.remark || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  {monthOptions.map((month) => (
+                    <option key={month} value={month}>
+                      {getMonthLabel(month)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
 
-        <p className="mt-4 text-xs text-slate-500">
-          Note: If a territory is marked Done, all streets under that territory are counted as covered. If marked Pending, only the streets not selected as pending are counted as covered.
-        </p>
-      </div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p className="text-sm text-slate-500">Coverage Rate</p>
+              <p className="mt-2 text-3xl font-bold text-green-600">{coverageRate}%</p>
+            </div>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p className="text-sm text-slate-500">Covered Streets</p>
+              <p className="mt-2 text-3xl font-bold text-green-600">{totalCovered}</p>
+            </div>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p className="text-sm text-slate-500">Pending Streets</p>
+              <p className="mt-2 text-3xl font-bold text-amber-600">{totalPending}</p>
+            </div>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+              <p className="text-sm text-slate-500">Not Updated</p>
+              <p className="mt-2 text-3xl font-bold text-slate-700">{totalNotUpdated}</p>
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <h2 className="text-xl font-semibold">
+              Street Coverage Summary — {getMonthLabel(selectedMonth)}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Shows how many times each street was scheduled and covered in the selected month.
+            </p>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600">
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Territory</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Street</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Scheduled</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Covered</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Pending</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Not Updated</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Coverage %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {streetSummary.map((row) => (
+                    <tr key={`${row.territoryNo}-${row.street}`} className="odd:bg-white even:bg-slate-50">
+                      <td className="border border-slate-200 px-3 py-2 font-medium">
+                        {row.territoryNo}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2">{row.street}</td>
+                      <td className="border border-slate-200 px-3 py-2">{row.scheduledCount}</td>
+                      <td className="border border-slate-200 px-3 py-2 text-green-700">
+                        {row.coveredCount}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2 text-amber-700">
+                        {row.pendingCount}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2 text-slate-600">
+                        {row.notUpdatedCount}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2 font-semibold">
+                        {row.coveragePercent}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <h2 className="text-xl font-semibold">
+              Detailed Monthly Records — {getMonthLabel(selectedMonth)}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              This table shows each street per scheduled date.
+            </p>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600">
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Date</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Day</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Territory</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Street</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Guide</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Territory Status</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Street Status</th>
+                    <th className="border border-slate-200 px-3 py-2 font-semibold">Remarks</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {rows.map((row, index) => (
+                    <tr
+                      key={`${row.dateKey}-${row.territoryNo}-${row.street}-${index}`}
+                      className="odd:bg-white even:bg-slate-50"
+                    >
+                      <td className="border border-slate-200 px-3 py-2">{row.dateShort}</td>
+                      <td className="border border-slate-200 px-3 py-2">{row.day}</td>
+                      <td className="border border-slate-200 px-3 py-2 font-medium">
+                        {row.territoryNo}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2">{row.street}</td>
+                      <td className="border border-slate-200 px-3 py-2">{row.guide}</td>
+                      <td className="border border-slate-200 px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-medium ${badgeClass(
+                            row.territoryStatus
+                          )}`}
+                        >
+                          {row.territoryStatus}
+                        </span>
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2">
+                        {row.streetStatus}
+                      </td>
+                      <td className="border border-slate-200 px-3 py-2">
+                        {row.remark || "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-500">
+              Note: If a territory is marked Done, all streets under that territory are counted as covered. If marked Pending, only the streets not selected as pending are counted as covered.
+            </p>
+          </div>
+        </>
+      )}
+
+      {activeTab === "territoryReport" && (
+        <>
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Territory Assignment Record</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  S-13 style territory report template. Data entry is manual for now; Firebase auto-save can be added next.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <label className="mb-2 block text-sm font-medium text-slate-700">
+                  Service Year
+                </label>
+                <input
+                  value={serviceYear}
+                  onChange={(e) => setServiceYear(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div className="mb-4 text-center">
+              <h2 className="text-lg font-bold tracking-wide text-slate-900">
+                TERRITORY ASSIGNMENT RECORD
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Service Year: <span className="font-semibold">{serviceYear}</span>
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-[1200px] border-collapse text-center text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700">
+                    <th rowSpan={2} className="border border-slate-300 px-2 py-2 font-semibold">
+                      Terr.<br />No.
+                    </th>
+                    <th rowSpan={2} className="border border-slate-300 px-2 py-2 font-semibold">
+                      Last date<br />completed*
+                    </th>
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <th key={index} className="border border-slate-300 px-2 py-2 font-semibold">
+                        Assigned to
+                      </th>
+                    ))}
+                  </tr>
+                  <tr className="bg-slate-50 text-slate-600">
+                    {Array.from({ length: 8 }).map((_, index) => (
+                      <th key={index} className="border border-slate-300 px-2 py-2 font-medium">
+                        Date assigned / completed
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {territoryList.map((territory) => {
+                    const data = reportData[territory.territoryNo] || {
+                      lastCompleted: "",
+                      lastCompletedGroup: "",
+                      assignments: [],
+                    };
+
+                    return (
+                      <tr key={territory.territoryNo} className="align-top odd:bg-white even:bg-slate-50">
+                        <td className="border border-slate-300 px-2 py-2 font-semibold">
+                          {territory.territoryNo}
+                        </td>
+
+                        <td className="border border-slate-300 px-2 py-2">
+                          <input
+                            value={data.lastCompleted}
+                            onChange={(e) =>
+                              updateReportField(territory.territoryNo, "lastCompleted", e.target.value)
+                            }
+                            placeholder="MM/DD/YYYY"
+                            className="mb-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none"
+                          />
+                          <input
+                            value={data.lastCompletedGroup}
+                            onChange={(e) =>
+                              updateReportField(territory.territoryNo, "lastCompletedGroup", e.target.value)
+                            }
+                            placeholder="Group"
+                            className="w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none"
+                          />
+                        </td>
+
+                        {Array.from({ length: 8 }).map((_, index) => {
+                          const assignment = data.assignments?.[index] || {
+                            assignedTo: "",
+                            dateAssigned: "",
+                            dateCompleted: "",
+                          };
+
+                          return (
+                            <td key={index} className="border border-slate-300 px-2 py-2">
+                              <input
+                                value={assignment.assignedTo}
+                                onChange={(e) =>
+                                  updateAssignmentField(
+                                    territory.territoryNo,
+                                    index,
+                                    "assignedTo",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="Assigned to"
+                                className="mb-1 w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none"
+                              />
+
+                              <div className="grid grid-cols-2 gap-1">
+                                <input
+                                  value={assignment.dateAssigned}
+                                  onChange={(e) =>
+                                    updateAssignmentField(
+                                      territory.territoryNo,
+                                      index,
+                                      "dateAssigned",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Assigned"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none"
+                                />
+
+                                <input
+                                  value={assignment.dateCompleted}
+                                  onChange={(e) =>
+                                    updateAssignmentField(
+                                      territory.territoryNo,
+                                      index,
+                                      "dateCompleted",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Completed"
+                                  className="w-full rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none"
+                                />
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-500">
+              *When beginning a new sheet, use this column to record the date on which each territory was last completed.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
