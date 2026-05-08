@@ -144,14 +144,10 @@ async function savePatch(patch) {
   loaded = true;
   notify();
 
-  await setDoc(
-    DATA_DOC,
-    {
-      ...patch,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  await setDoc(DATA_DOC, {
+    ...cache,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /* =========================
